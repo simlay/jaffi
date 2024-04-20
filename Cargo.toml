@@ -33,7 +33,7 @@ license = "MIT/Apache-2.0"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [workspace]
-members = ["jaffi_support", "integration_tests"]
+members = ["jaffi_support", "integration_tests", "android-bindings"]
 
 [dependencies]
 cafebabe = { version = "0.6.0" }
