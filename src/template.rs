@@ -863,11 +863,11 @@ impl ObjectType {
     /// Returns the typename without a lifetime
     pub(crate) fn to_rs_type_name(&self) -> RustTypeName {
         match *self {
-            Self::JClass => "jni::objects::JClass<'j>".into(),
+            Self::JClass      => "jni::objects::JClass<'j>".into(),
             Self::JByteBuffer => "jni::objects::JByteBuffer<'j>".into(),
-            Self::JObject => "jni::objects::JObject<'j>".into(),
-            Self::JString => "String".into(),
-            Self::JThrowable => "jni::objects::JThrowable<'j>".into(),
+            Self::JObject     => "jni::objects::JObject<'j>".into(),
+            Self::JString     => "String".into(),
+            Self::JThrowable  => "jni::objects::JThrowable<'j>".into(),
             Self::Object(ref obj) => {
                 RustTypeName::from(obj.0.replace('/', "_").to_upper_camel_case()).append("<'j>")
             }

@@ -20,6 +20,29 @@ use super::*;
 #[repr(transparent)]
 pub struct UnsupportedArray<'j>(pub JObject<'j>);
 
+impl<'j> FromJavaToRust<'j, Self> for UnsupportedArray<'j> {
+    fn java_to_rust(java: Self, _env: JNIEnv<'j>) -> Self {
+        java
+    }
+}
+impl<'j> Deref for UnsupportedArray<'j> {
+    type Target = JObject<'j>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+impl<'j> FromRustToJava<'j, Self> for UnsupportedArray<'j> {
+    fn rust_to_java(rust: Self, _env: JNIEnv<'j>) -> Self {
+        rust
+    }
+}
+impl<'j> From<JObject<'j>> for UnsupportedArray<'j> {
+    fn from(jobject: JObject<'j>) -> Self {
+        Self(jobject)
+    }
+}
+
 /// Arrays
 ///
 /// If greater than 1 dimension of
