@@ -35,14 +35,14 @@ impl<'j> JavaByteArray<'j> {
     /// Creates a new array from containing the data from `from`
     pub fn new(env: JNIEnv<'j>, from: &[u8]) -> Result<Self, jni::errors::Error> {
         env.byte_array_from_slice(from)
-            .map(|jarray| Self(jarray.into()))
+            .map(|jarray| Self(unsafe{JObject::from_raw(jarray)}))
     }
 
     /// A read-only wrapper around the java array
     pub fn as_slice<'s>(
         &'s self,
         env: &'s JNIEnv<'j>,
-    ) -> Result<JavaByteArrayRef<'s, 'j>, jni::errors::Error> {
+    ) -> Result<JavaByteArrayRef<'s>, jni::errors::Error> {
         env.get_byte_array_elements(*self.0, jni::objects::ReleaseMode::NoCopyBack)
             .map(JavaByteArrayRef)
     }
@@ -82,9 +82,9 @@ impl<'j> Deref for JavaByteArray<'j> {
     }
 }
 
-pub struct JavaByteArrayRef<'s: 'j, 'j>(AutoArray<'s, 'j, jni::sys::jbyte>);
+pub struct JavaByteArrayRef<'s>(AutoArray<'s, jni::sys::jbyte>);
 
-impl<'s: 'j, 'j> Deref for JavaByteArrayRef<'s, 'j> {
+impl<'s: 'j, 'j> Deref for JavaByteArrayRef<'s> {
     type Target = [u8];
 
     fn deref(&self) -> &Self::Target {

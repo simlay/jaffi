@@ -36,7 +36,7 @@ fn call_string_method<'j, 'l: 'j>(
     method: &str,
 ) -> Result<Option<JavaStr<'j, 'l>>, jni::errors::Error> {
     let jstring = env
-        .call_method(*obj, method, "()Ljava/lang/String;", &[])?
+        .call_method(obj, method, "()Ljava/lang/String;", &[])?
         .l()
         .map(JString::from)?;
 
@@ -302,7 +302,7 @@ macro_rules! from_java_value {
 impl<'j> FromJavaValue<'j, JavaBoolean> for bool {
     fn from_jvalue(_env: JNIEnv<'j>, jvalue: JValue<'j>) -> Self {
         jvalue.z().expect("wrong type conversion")
-    }    
+    }
 }
 
 from_java_value!(JavaByte, u8, b);

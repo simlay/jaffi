@@ -55,7 +55,7 @@ fn generate_function(func: &Function) -> TokenStream {
         .arguments
         .iter()
         .map(|arg| (&arg.name, &arg.rs_ty, &arg.ty))
-        .map(|(name, rs_ty, ty)| 
+        .map(|(name, rs_ty, ty)|
             quote!{ <#rs_ty as IntoJavaValue<'j, #ty>>::into_java_value(#name, env) }
         )
         .collect::<Vec<_>>();
@@ -64,7 +64,7 @@ fn generate_function(func: &Function) -> TokenStream {
     let name = &func.name;
     let from_java_value =
         quote! { <#rs_result as FromJavaValue<#result>>::from_jvalue(env, jvalue) };
-    let exception_handler = if !func.exceptions.is_empty() { 
+    let exception_handler = if !func.exceptions.is_empty() {
         quote!{
             Err(jni::errors::Error::JavaException) => {
                 let throwable = match env.exception_occurred() {
@@ -77,7 +77,7 @@ fn generate_function(func: &Function) -> TokenStream {
                     Ok(exception) => {
                         return Err(exception);
                     }
-                    Err(e) => panic!("uncaught exception, {:#x}", e.into_inner() as usize),
+                    Err(e) => panic!("uncaught exception, {:#x}", e.into_raw() as usize),
                 }
             }
         }
@@ -146,7 +146,7 @@ fn generate_function(func: &Function) -> TokenStream {
             };
 
             #ok_return
-            rust_value 
+            rust_value
         }
     }
 }
@@ -307,7 +307,7 @@ fn generate_exceptions(exception_sets: HashSet<BTreeSet<JavaDesc>>) -> TokenStre
     for exception in exception_types {
         let ex_ident = make_ident(exception.class_name());
         let ex_class_name = format!("{exception}");
-        let doc_str = 
+        let doc_str =
         format!("An opaque type that represents the exception object `{exception}` from Java");
 
         tokens.extend(quote!{
@@ -321,7 +321,7 @@ fn generate_exceptions(exception_sets: HashSet<BTreeSet<JavaDesc>>) -> TokenStre
                     env.throw_new(#ex_class_name, msg)
                 }
 
-                fn catch<'j>(env: JNIEnv<'j>, throwable: JThrowable<'j>) -> Result<Self, JThrowable<'j>> { 
+                fn catch<'j>(env: JNIEnv<'j>, throwable: JThrowable<'j>) -> Result<Self, JThrowable<'j>> {
                     if !throwable.is_null() && env.is_instance_of(throwable, #ex_class_name).expect("could not check instance_of") {
                         Ok(Self)
                     } else {
@@ -363,7 +363,7 @@ fn generate_exceptions(exception_sets: HashSet<BTreeSet<JavaDesc>>) -> TokenStre
                     }
                 }
 
-                fn catch<'j>(env: JNIEnv<'j>, throwable: JThrowable<'j>) -> Result<Self, JThrowable<'j>> { 
+                fn catch<'j>(env: JNIEnv<'j>, throwable: JThrowable<'j>) -> Result<Self, JThrowable<'j>> {
                     const ALL_EXCEPTIONS: &[#exception]  = &[#(#exception::#ex_variants),*] as &[_];
                     for exception in ALL_EXCEPTIONS {
                         match exception {
