@@ -54,6 +54,11 @@ impl<'j, T> JavaPrimitive for T where T: Deref<Target = JObject<'j>> + Default {
 pub trait FromJavaToRust<'j, J: 'j> {
     fn java_to_rust(java: J, _env: JNIEnv<'j>) -> Self;
 }
+impl<'j> FromJavaToRust<'j, JObject<'j>> for JObject<'j> {
+    fn java_to_rust(java: JObject<'j>, _env: JNIEnv<'j>) -> Self {
+        java
+    }
+}
 
 pub trait FromRustToJava<'j, R> {
     fn rust_to_java(rust: R, _env: JNIEnv<'j>) -> Self;
@@ -329,6 +334,11 @@ where
     fn into_java_value(self, env: JNIEnv<'j>) -> JValue<'j> {
         let java = J::rust_to_java(self, env);
         JValue::Object(*java)
+    }
+}
+impl<'j> IntoJavaValue<'j, JObject<'j>> for JObject<'j> {
+    fn into_java_value(self, env: JNIEnv<'j>) -> JValue<'j> {
+        JValue::Object(self)
     }
 }
 
