@@ -1069,7 +1069,7 @@ impl JavaDesc {
     /// Returns the final Class name, e.g. returns `String` for `java/lang/String`
     pub(crate) fn class_name(&self) -> &str {
         self.0
-            .split('/')
+            .split(['/', '$'])
             .last()
             .expect("split should at least return empty string")
     }

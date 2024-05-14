@@ -9,4 +9,11 @@ public class ParentClass {
     public final Object call_dad_object(Object val) {
         return val;
     }
+
+    // In some cases, throwables are passed in and sometimes returned.
+    // https://developer.android.com/reference/android/util/AndroidException#AndroidException(java.lang.String,%20java.lang.Throwable)
+    public final Throwable call_dad_throwable(Throwable val) {
+        return val;
+    }
+
 }
