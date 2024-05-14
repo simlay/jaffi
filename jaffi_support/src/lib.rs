@@ -14,7 +14,7 @@ pub use exceptions::{Error, Exception, Throwable};
 pub use jni;
 
 use jni::{
-    objects::{JClass, JObject, JString, JValue},
+    objects::{JClass, JObject, JString, JValue, JThrowable},
     strings::{JNIString, JavaStr},
     JNIEnv,
 };
@@ -56,6 +56,11 @@ pub trait FromJavaToRust<'j, J: 'j> {
 }
 impl<'j> FromJavaToRust<'j, JObject<'j>> for JObject<'j> {
     fn java_to_rust(java: JObject<'j>, _env: JNIEnv<'j>) -> Self {
+        java
+    }
+}
+impl<'j> FromJavaToRust<'j, JThrowable<'j>> for JThrowable<'j> {
+    fn java_to_rust(java: JThrowable<'j>, _env: JNIEnv<'j>) -> Self {
         java
     }
 }
@@ -337,8 +342,14 @@ where
     }
 }
 impl<'j> IntoJavaValue<'j, JObject<'j>> for JObject<'j> {
-    fn into_java_value(self, env: JNIEnv<'j>) -> JValue<'j> {
+    fn into_java_value(self, _env: JNIEnv<'j>) -> JValue<'j> {
         JValue::Object(self)
+    }
+}
+
+impl<'j> IntoJavaValue<'j, JThrowable<'j>> for JThrowable<'j> {
+    fn into_java_value(self, _env: JNIEnv<'j>) -> JValue<'j> {
+        JValue::Object(*self)
     }
 }
 
