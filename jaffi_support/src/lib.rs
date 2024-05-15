@@ -16,6 +16,7 @@ pub use jni;
 use jni::{
     objects::{JClass, JObject, JString, JValue, JThrowable},
     strings::{JNIString, JavaStr},
+    sys::_jobject,
     JNIEnv,
 };
 
@@ -68,6 +69,17 @@ impl<'j> FromJavaToRust<'j, JThrowable<'j>> for JThrowable<'j> {
 
 pub trait FromRustToJava<'j, R> {
     fn rust_to_java(rust: R, _env: JNIEnv<'j>) -> Self;
+}
+
+impl<'j> FromRustToJava<'j, JObject<'j>> for JObject<'j> {
+    fn rust_to_java(rust: JObject<'j>, _env: JNIEnv<'j>) -> Self {
+        rust
+    }
+}
+impl<'j> FromRustToJava<'j, JThrowable<'j>> for JThrowable<'j> {
+    fn rust_to_java(rust: JThrowable<'j>, _env: JNIEnv<'j>) -> Self {
+        rust
+    }
 }
 
 /// Byte
@@ -330,6 +342,16 @@ pub trait IntoJavaValue<'j, J: 'j> {
     fn into_java_value(self, env: JNIEnv<'j>) -> JValue<'j>;
 }
 
+/*
+impl<'j> IntoJavaValue<'j, JObject<'j>> for *mut _jobject {
+    fn into_java_value(self, _env: JNIEnv<'j>) -> JValue<'j> {
+        todo!()
+        //JValue::Object(self)
+    }
+}
+*/
+
+/*
 impl<'j> IntoJavaValue<'j, JObject<'j>> for JObject<'j> {
     fn into_java_value(self, _env: JNIEnv<'j>) -> JValue<'j> {
         JValue::Object(self)
@@ -341,6 +363,7 @@ impl<'j> IntoJavaValue<'j, JThrowable<'j>> for JThrowable<'j> {
         JValue::Object(*self)
     }
 }
+*/
 
 impl<'j, J, R> IntoJavaValue<'j, J> for R
 where

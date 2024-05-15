@@ -1,5 +1,5 @@
 use jaffi_support::{
-    jni::{objects::JObject, JNIEnv},
+    jni::{objects::{JObject, JThrowable}, JNIEnv},
     Error,
 };
 use net_bluejekyll::NetBluejekyllNativeStrings;
@@ -81,6 +81,25 @@ impl<'j> net_bluejekyll::NativePrimitivesRs<'j> for NativePrimitivesRsImpl<'j> {
 
         let parent = this.as_net_bluejekyll_parent_class();
         parent.call_1dad(self.env, arg0)
+    }
+
+    fn call_dad_object_native(
+        &self,
+        this: NetBluejekyllNativePrimitives<'j>,
+        arg0: JObject<'j>,
+    ) -> JObject<'j> {
+        todo!();
+    /*
+        let parent = this.as_net_bluejekyll_parent_class();
+        parent.call_1dad_1object(self.env, arg0)
+    */
+    }
+    fn call_dad_throwable_native(
+        &self,
+        this: NetBluejekyllNativePrimitives<'j>,
+        arg0: JThrowable<'j>,
+    ) -> JThrowable<'j> {
+        todo!();
     }
 
     fn invert(&self, _this:NetBluejekyllNativePrimitives<'j>, arg0: bool) -> bool {

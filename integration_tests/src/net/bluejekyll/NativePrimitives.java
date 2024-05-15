@@ -30,6 +30,10 @@ public class NativePrimitives extends ParentClass {
 
     public native int callDadNative(int arg1);
 
+    public native Object callDadObjectNative(Object arg1);
+
+    public native Throwable callDadThrowableNative(Throwable arg1);
+
     public native boolean invert(boolean arg);
 
     public native java.io.File unsupported(java.io.File file);
