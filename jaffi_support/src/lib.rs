@@ -14,7 +14,7 @@ pub use exceptions::{Error, Exception, Throwable};
 pub use jni;
 
 use jni::{
-    objects::{JClass, JObject, JString, JValue},
+    objects::{JClass, JObject, JString, JValue, JThrowable},
     strings::{JNIString, JavaStr},
     JNIEnv,
 };
@@ -53,6 +53,17 @@ impl<'j, T> JavaPrimitive for T where T: Deref<Target = JObject<'j>> + Default {
 
 pub trait FromJavaToRust<'j, J: 'j> {
     fn java_to_rust(java: J, _env: JNIEnv<'j>) -> Self;
+}
+
+impl<'j> FromJavaToRust<'j, JObject<'j>> for JObject<'j> {
+    fn java_to_rust(java: JObject<'j>, _env: JNIEnv<'j>) -> Self {
+        java
+    }
+}
+impl<'j> FromJavaToRust<'j, JThrowable<'j>> for JThrowable<'j> {
+    fn java_to_rust(java: JThrowable<'j>, _env: JNIEnv<'j>) -> Self {
+        java
+    }
 }
 
 pub trait FromRustToJava<'j, R> {
@@ -317,6 +328,18 @@ from_java_value!(JavaVoid, (), v);
 /// Convert from Rust type into JValue
 pub trait IntoJavaValue<'j, J: 'j> {
     fn into_java_value(self, env: JNIEnv<'j>) -> JValue<'j>;
+}
+
+impl<'j> IntoJavaValue<'j, JObject<'j>> for JObject<'j> {
+    fn into_java_value(self, _env: JNIEnv<'j>) -> JValue<'j> {
+        JValue::Object(self)
+    }
+}
+
+impl<'j> IntoJavaValue<'j, JThrowable<'j>> for JThrowable<'j> {
+    fn into_java_value(self, _env: JNIEnv<'j>) -> JValue<'j> {
+        JValue::Object(*self)
+    }
 }
 
 impl<'j, J, R> IntoJavaValue<'j, J> for R
