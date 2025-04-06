@@ -374,7 +374,7 @@ impl<'a> Jaffi<'a> {
                 .collect::<Vec<_>>();
 
             let result = if !is_constructor {
-                Return::from_java(&method.descriptor.result)
+                Return::from_java(&method.descriptor.return_type)
             } else {
                 Return::Val(JniType::Ty(BaseJniTy::Jobject(ObjectType::from(
                     object_java_desc.clone(),

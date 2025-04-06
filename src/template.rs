@@ -10,7 +10,7 @@ use std::{
     fmt,
 };
 
-use cafebabe::descriptor::{BaseType, FieldType, ReturnDescriptor, Ty};
+use cafebabe::descriptors::{FieldType, FieldDescriptor ,ReturnDescriptor};
 use enum_as_inner::EnumAsInner;
 use heck::{ToSnakeCase, ToUpperCamelCase};
 use jaffi_support::{
@@ -761,29 +761,28 @@ impl JniType {
     }
 
     /// Takes the types from the class file and converts to Self.
-    pub(crate) fn from_java(field_type: &FieldType<'_>) -> Self {
-        fn base_jni_ty_from_java(ty: &Ty<'_>) -> BaseJniTy {
-            match ty {
-                Ty::Base(BaseType::Byte) => BaseJniTy::Jbyte,
-                Ty::Base(BaseType::Char) => BaseJniTy::Jchar,
-                Ty::Base(BaseType::Double) => BaseJniTy::Jdouble,
-                Ty::Base(BaseType::Float) => BaseJniTy::Jfloat,
-                Ty::Base(BaseType::Int) => BaseJniTy::Jint,
-                Ty::Base(BaseType::Long) => BaseJniTy::Jlong,
-                Ty::Base(BaseType::Short) => BaseJniTy::Jshort,
-                Ty::Base(BaseType::Boolean) => BaseJniTy::Jboolean,
-                Ty::Object(obj) => {
-                    BaseJniTy::Jobject(ObjectType::from(JavaDesc::from(obj.to_string())))
-                }
-            }
-        }
+    pub(crate) fn from_java(field_descriptor: &FieldDescriptor<'_>) -> Self {
 
-        match field_type {
-            FieldType::Ty(ty) => Self::Ty(base_jni_ty_from_java(ty)),
-            FieldType::Array { dimensions, ty } => Self::Jarray(JavaArray {
-                dimensions: *dimensions,
-                ty: base_jni_ty_from_java(ty),
-            }),
+        let ty = match &field_descriptor.field_type {
+            FieldType::Byte => BaseJniTy::Jbyte,
+            FieldType::Char => BaseJniTy::Jchar,
+            FieldType::Double => BaseJniTy::Jdouble,
+            FieldType::Float => BaseJniTy::Jfloat,
+            FieldType::Integer => BaseJniTy::Jint,
+            FieldType::Long => BaseJniTy::Jlong,
+            FieldType::Short => BaseJniTy::Jshort,
+            FieldType::Boolean => BaseJniTy::Jboolean,
+            FieldType::Object(obj) => {
+                BaseJniTy::Jobject(ObjectType::from(JavaDesc::from(obj.to_string())))
+            }
+        };
+        if field_descriptor.dimensions > 0 {
+            Self::Jarray(JavaArray {
+                dimensions: field_descriptor.dimensions as usize,
+                ty,
+            })
+        } else {
+            Self::Ty(ty)
         }
     }
 }
