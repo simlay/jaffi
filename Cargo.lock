@@ -16,8 +16,9 @@ checksum = "d71b6127be86fdcfddb610f7182ac57211d4b18a3e9c82eb2d17662f2227ad6a"
 
 [[package]]
 name = "cafebabe"
-version = "0.8.0"
-source = "git+https://github.com/simlay/cafebabe?branch=re-add-impl-display-for-descriptors#8829cc6cd019036bef5a1309b12e702d4fe0b4cf"
+version = "0.8.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7793c9b8e18fb8f7d64126e9c5b5ec660b25d2af97869c56c770f9c01b836f0f"
 dependencies = [
  "bitflags",
  "cesu8",
