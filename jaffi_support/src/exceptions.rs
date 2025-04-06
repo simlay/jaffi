@@ -9,13 +9,13 @@ use std::{
     any::Any,
     borrow::Cow,
     fmt,
-    panic::{self, PanicInfo, UnwindSafe},
+    cell::RefCell,
+    panic::{self, PanicHookInfo, UnwindSafe},
 };
 
 use jni::{
-    objects::{JObject, JThrowable},
+    objects::{JObject, JThrowable, JObjectArray},
     strings::JNIString,
-    sys::jarray,
     JNIEnv, JavaVM,
 };
 
@@ -39,8 +39,8 @@ pub fn get_panic_message(message: &dyn Any) -> Cow<'_, str> {
 
 /// This panic hook can add a bit more information than the catch_unwind, which doesn't get the full panic_info
 pub fn register_panic_hook(vm: JavaVM) {
-    panic::set_hook(Box::new(move |panic_info: &PanicInfo| {
-        let env = vm.get_env().expect("not called in a JVM context");
+    panic::set_hook(Box::new(move |panic_info: &PanicHookInfo| {
+        let mut env = vm.get_env().expect("not called in a JVM context");
 
         // we don't want to overwrite an existing exception...
         if !env.exception_check().unwrap_or(true) {
@@ -61,7 +61,7 @@ pub fn register_panic_hook(vm: JavaVM) {
 ///
 /// * `R` - must implement `Default` in order to allow the (unused) default return value in the case of an exception
 pub fn catch_panic_and_throw<F: FnOnce() -> R + UnwindSafe, R: NullObject>(
-    env: JNIEnv<'_>,
+    env: &mut JNIEnv<'_>,
     f: F,
 ) -> R {
     let result = std::panic::catch_unwind(f);
@@ -85,10 +85,10 @@ pub fn catch_panic_and_throw<F: FnOnce() -> R + UnwindSafe, R: NullObject>(
 pub trait Throwable: Sized {
     /// Throw a new exception.
     #[track_caller]
-    fn throw<S: Into<JNIString>>(&self, env: JNIEnv<'_>, msg: S) -> Result<(), jni::errors::Error>;
+    fn throw<S: Into<JNIString>>(&self, env: &mut JNIEnv<'_>, msg: S) -> Result<(), jni::errors::Error>;
 
     /// Tests the exception against this type to see if it's a correct exception
-    fn catch<'j>(_env: JNIEnv<'j>, exception: JThrowable<'j>) -> Result<Self, JThrowable<'j>>;
+    fn catch<'j>(_env: &JNIEnv<'j>, exception: &JThrowable<'j>) -> Result<Self, JThrowable<'j>>;
 }
 
 pub struct AnyThrowable;
@@ -96,12 +96,12 @@ pub struct AnyThrowable;
 impl Throwable for AnyThrowable {
     /// Throw a new exception.
     #[track_caller]
-    fn throw<S: Into<JNIString>>(&self, env: JNIEnv<'_>, msg: S) -> Result<(), jni::errors::Error> {
+    fn throw<S: Into<JNIString>>(&self, env: &mut JNIEnv<'_>, msg: S) -> Result<(), jni::errors::Error> {
         env.throw_new("java/lang/RuntimeException", msg)
     }
 
     /// Tests the exception against this type to see if it's a correct exception
-    fn catch<'j>(_env: JNIEnv<'j>, _exception: JThrowable<'j>) -> Result<Self, JThrowable<'j>> {
+    fn catch<'j>(_env: &JNIEnv<'j>, _exception: &JThrowable<'j>) -> Result<Self, JThrowable<'j>> {
         Ok(Self)
     }
 }
@@ -118,21 +118,21 @@ impl<E: Throwable> Error<E> {
     }
 
     #[track_caller]
-    pub fn throw(&self, env: JNIEnv<'_>) -> Result<(), jni::errors::Error> {
+    pub fn throw(&self, env: &mut JNIEnv<'_>) -> Result<(), jni::errors::Error> {
         <E as Throwable>::throw(&self.kind, env, &self.msg)
     }
 }
 
 /// A type that represents a known Exception type from Java.
 pub struct Exception<'j, T: Throwable> {
-    env: JNIEnv<'j>,
+    env: RefCell<JNIEnv<'j>>,
     exception: JThrowable<'j>,
     throwable: T,
 }
 
 impl<'j, T: Throwable + Copy> Exception<'j, T> {
-    pub fn exception(&self) -> JThrowable<'j> {
-        self.exception
+    pub fn exception(&self) -> &JThrowable<'j> {
+        &self.exception
     }
 
     pub fn throwable(&self) -> T {
@@ -145,7 +145,7 @@ impl<'j, T: Throwable> Exception<'j, T> {
     #[track_caller]
     pub fn throw<S: Into<JNIString>>(
         &self,
-        env: JNIEnv<'_>,
+        env: &mut JNIEnv<'_>,
         msg: S,
     ) -> Result<(), jni::errors::Error> {
         self.throwable.throw(env, msg)
@@ -153,10 +153,10 @@ impl<'j, T: Throwable> Exception<'j, T> {
 
     /// Tests the exception against this type to see if it's a correct exception
     pub fn catch(env: JNIEnv<'j>, exception: JThrowable<'j>) -> Result<Self, JThrowable<'j>> {
-        let throwable = T::catch(env, exception)?;
+        let throwable = T::catch(&env, &exception)?;
 
         Ok(Self {
-            env,
+            env: env.into(),
             exception,
             throwable,
         })
@@ -170,28 +170,29 @@ impl<'j, T: Throwable> fmt::Display for Exception<'j, T> {
             return Ok(());
         }
 
-        let mut exception = self.exception;
+        let mut exception = &unsafe {JObject::from_raw(self.exception.clone())};
 
         // loop through all causes
         for i in 0usize.. {
             let ex_or_cause = if i == 0 { "exception" } else { "cause" };
 
-            let clazz = crate::get_class_name(self.env, JObject::from(exception).into())
+            let clazz = crate::get_class_name(&self.env, exception.into())
                 .map_err(|_| fmt::Error)?;
 
-            let message = crate::call_string_method(&self.env, exception.into(), "getMessage")
+            let message = crate::call_string_method(&self.env, exception, "getMessage")
                 .map_err(|_| fmt::Error)?;
 
-            if let Some(message) = message {
-                writeln!(f, "{ex_or_cause}: {clazz}: {}", Cow::from(&message))?;
+            if !message.is_empty() {
+                writeln!(f, "{ex_or_cause}: {clazz}: {}", message)?;
             } else {
                 writeln!(f, "{ex_or_cause}: {clazz}")?;
             };
 
             let trace = self
                 .env
+                .borrow_mut()
                 .call_method(
-                    JObject::from(exception),
+                    exception,
                     "getStackTrace",
                     "()[Ljava/lang/StackTraceElement;",
                     &[],
@@ -201,20 +202,22 @@ impl<'j, T: Throwable> fmt::Display for Exception<'j, T> {
                 .map_err(|_| fmt::Error)?;
 
             if !trace.is_null() {
-                let trace = *trace as jarray;
-                let len = self.env.get_array_length(trace).map_err(|_| fmt::Error)?;
+                let trace = JObjectArray::from(trace);
+
+                let len = self.env.borrow_mut().get_array_length(&trace).map_err(|_| fmt::Error)?;
 
                 for i in 0..len as usize {
                     let stack_element = self
                         .env
-                        .get_object_array_element(trace, i as i32)
+                        .borrow_mut()
+                        .get_object_array_element(&trace, i as i32)
                         .map_err(|_| fmt::Error)?;
 
-                    let stack_str = crate::call_string_method(&self.env, stack_element, "toString")
+                    let stack_str = crate::call_string_method(&self.env, &stack_element, "toString")
                         .map_err(|_| fmt::Error)?;
 
-                    if let Some(stack_str) = stack_str {
-                        writeln!(f, "\t{}", Cow::from(&stack_str))?;
+                    if !stack_str.is_empty() {
+                        writeln!(f, "\t{}", stack_str)?;
                     }
                 }
             }
@@ -222,15 +225,16 @@ impl<'j, T: Throwable> fmt::Display for Exception<'j, T> {
             // continue the going through the causes
             let cause = self
                 .env
+                .borrow_mut()
                 .call_method(
-                    JObject::from(exception),
+                    exception,
                     "getCause",
                     "()Ljava/lang/Throwable;",
                     &[],
                 )
                 .map_err(|_| fmt::Error)?;
 
-            exception = cause.l().map(Into::into).map_err(|_| fmt::Error)?;
+            //exception = &cause.l().map(Into::into).map_err(|_| fmt::Error)?;
         }
 
         Ok(())

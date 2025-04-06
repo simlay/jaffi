@@ -5,7 +5,7 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
-use std::{borrow::Cow, ops::Deref};
+use std::{borrow::Cow, ops::Deref, cell::RefCell};
 
 pub mod arrays;
 pub mod exceptions;
@@ -14,37 +14,34 @@ pub use exceptions::{Error, Exception, Throwable};
 pub use jni;
 
 use jni::{
-    objects::{JClass, JObject, JString, JValue},
+    objects::{JClass, JObject, JString, JValue, JByteArray, JValueOwned},
     strings::{JNIString, JavaStr},
     JNIEnv,
 };
 
 pub(crate) fn get_class_name<'j>(
-    env: JNIEnv<'j>,
-    clazz: JClass<'j>,
+    env: &RefCell<JNIEnv<'j>>,
+    clazz: &JClass<'j>,
 ) -> Result<String, jni::errors::Error> {
-    let name = env.call_method(clazz, "getCanonicalName", "()Ljava/lang/String;", &[])?;
+    let name = env.borrow_mut().call_method(clazz, "getCanonicalName", "()Ljava/lang/String;", &[])?;
     let name = name.l()?;
     let name = JString::from(name);
-    let name = env.get_string(name)?;
+    let name = env.borrow_mut().get_string(&name)?;
     Ok(Cow::from(&name).to_string())
 }
 
 fn call_string_method<'j, 'l: 'j>(
-    env: &'l JNIEnv<'j>,
-    obj: JObject<'j>,
+    env: &RefCell<JNIEnv<'j>>,
+    obj: &JObject<'j>,
     method: &str,
-) -> Result<Option<JavaStr<'j, 'l>>, jni::errors::Error> {
-    let jstring = env
+) -> Result<String, jni::errors::Error> {
+    let jstring = env.borrow_mut()
         .call_method(obj, method, "()Ljava/lang/String;", &[])?
         .l()
         .map(JString::from)?;
 
-    if jstring.is_null() {
-        return Ok(None);
-    }
-
-    env.get_string(jstring).map(Some)
+    let jstring = env.borrow_mut().get_string(&jstring)?;
+    Ok(Cow::from(&jstring).to_string())
 }
 
 pub trait JavaPrimitive: Default {}
@@ -52,7 +49,7 @@ pub trait JavaPrimitive: Default {}
 impl<'j, T> JavaPrimitive for T where T: Deref<Target = JObject<'j>> + Default {}
 
 pub trait FromJavaToRust<'j, J: 'j> {
-    fn java_to_rust(java: J, _env: JNIEnv<'j>) -> Self;
+    fn java_to_rust(java: J, _env: &mut JNIEnv<'j>) -> Self;
 }
 
 pub trait FromRustToJava<'j, R> {
@@ -65,7 +62,7 @@ pub trait FromRustToJava<'j, R> {
 pub struct JavaByte(pub jni::sys::jbyte);
 
 impl FromJavaToRust<'_, JavaByte> for u8 {
-    fn java_to_rust(java: JavaByte, _env: JNIEnv<'_>) -> Self {
+    fn java_to_rust(java: JavaByte, _env: &mut JNIEnv<'_>) -> Self {
         java.0 as u8
     }
 }
@@ -85,7 +82,7 @@ impl FromRustToJava<'_, u8> for JavaByte {
 pub struct JavaChar(pub jni::sys::jchar);
 
 impl FromJavaToRust<'_, JavaChar> for char {
-    fn java_to_rust(java: JavaChar, _env: JNIEnv<'_>) -> Self {
+    fn java_to_rust(java: JavaChar, _env: &mut JNIEnv<'_>) -> Self {
         let ch = java.0 as u32;
         unsafe { char::from_u32_unchecked(ch) }
     }
@@ -103,7 +100,7 @@ impl FromRustToJava<'_, char> for JavaChar {
 pub struct JavaDouble(pub jni::sys::jdouble);
 
 impl FromJavaToRust<'_, JavaDouble> for f64 {
-    fn java_to_rust(java: JavaDouble, _env: JNIEnv<'_>) -> Self {
+    fn java_to_rust(java: JavaDouble, _env: &mut JNIEnv<'_>) -> Self {
         java.0
     }
 }
@@ -120,7 +117,7 @@ impl FromRustToJava<'_, f64> for JavaDouble {
 pub struct JavaFloat(pub jni::sys::jfloat);
 
 impl FromJavaToRust<'_, JavaFloat> for f32 {
-    fn java_to_rust(java: JavaFloat, _env: JNIEnv<'_>) -> Self {
+    fn java_to_rust(java: JavaFloat, _env: &mut JNIEnv<'_>) -> Self {
         java.0
     }
 }
@@ -137,7 +134,7 @@ impl FromRustToJava<'_, f32> for JavaFloat {
 pub struct JavaInt(pub jni::sys::jint);
 
 impl FromJavaToRust<'_, JavaInt> for i32 {
-    fn java_to_rust(java: JavaInt, _env: JNIEnv<'_>) -> Self {
+    fn java_to_rust(java: JavaInt, _env: &mut JNIEnv<'_>) -> Self {
         java.0
     }
 }
@@ -154,7 +151,7 @@ impl FromRustToJava<'_, i32> for JavaInt {
 pub struct JavaLong(pub jni::sys::jlong);
 
 impl FromJavaToRust<'_, JavaLong> for i64 {
-    fn java_to_rust(java: JavaLong, _env: JNIEnv<'_>) -> Self {
+    fn java_to_rust(java: JavaLong, _env: &mut JNIEnv<'_>) -> Self {
         java.0
     }
 }
@@ -171,7 +168,7 @@ impl FromRustToJava<'_, i64> for JavaLong {
 pub struct JavaShort(pub jni::sys::jshort);
 
 impl FromJavaToRust<'_, JavaShort> for i16 {
-    fn java_to_rust(java: JavaShort, _env: JNIEnv<'_>) -> Self {
+    fn java_to_rust(java: JavaShort, _env: &mut JNIEnv<'_>) -> Self {
         java.0
     }
 }
@@ -188,7 +185,7 @@ impl FromRustToJava<'_, i16> for JavaShort {
 pub struct JavaBoolean(pub jni::sys::jboolean);
 
 impl FromJavaToRust<'_, JavaBoolean> for bool {
-    fn java_to_rust(java: JavaBoolean, _env: JNIEnv<'_>) -> Self {
+    fn java_to_rust(java: JavaBoolean, _env: &mut JNIEnv<'_>) -> Self {
         java.0 == jni::sys::JNI_TRUE
     }
 }
@@ -209,7 +206,7 @@ impl FromRustToJava<'_, bool> for JavaBoolean {
 pub struct JavaVoid(());
 
 impl FromJavaToRust<'_, JavaVoid> for () {
-    fn java_to_rust(_java: JavaVoid, _env: JNIEnv<'_>) -> Self {}
+    fn java_to_rust(_java: JavaVoid, _env: &mut JNIEnv<'_>) -> Self {}
 }
 
 impl FromRustToJava<'_, ()> for JavaVoid {
@@ -224,7 +221,7 @@ where
     J: 'j + Deref<Target = JObject<'j>>,
 {
     // TODO: there's probably a somewhat cheaper option to reduce all the allocations here.
-    fn java_to_rust(java: J, env: JNIEnv<'j>) -> Self {
+    fn java_to_rust(java: J, env: &mut JNIEnv<'j>) -> Self {
         // We're going to have Java properly return utf-8 bytes from a String rather than the BS that is the "reduced utf-8" in JNI
         let utf8_arg = env
             .new_string("UTF-8")
@@ -233,18 +230,18 @@ where
         // TODO: cache the method_id...
         let byte_array = env
             .call_method(
-                *java,
+                &*java,
                 "getBytes",
                 "(Ljava/lang/String;)[B",
-                &[JValue::Object(utf8_arg.into())],
+                &[JValue::Object(&utf8_arg.into())],
             )
             .expect("couldn't call a standard method in Java");
         let byte_array = byte_array
             .l()
+            .map(JByteArray::from)
             .expect("should have been a JObject of a byte array");
-
         let bytes = env
-            .convert_byte_array(*byte_array)
+            .convert_byte_array(byte_array)
             .expect("the byte_array from previous call was bad");
 
         // Java should really not have returned bad UTF-8
@@ -273,7 +270,7 @@ where
 ///
 /// This is infallible because the generated code using it should "know" that the type is already correct
 pub trait FromJavaValue<'j, J>: Sized {
-    fn from_jvalue(env: JNIEnv<'j>, jvalue: JValue<'j>) -> Self;
+    fn from_jvalue(env: &mut JNIEnv<'j>, jvalue: JValueOwned<'j>) -> Self;
 }
 
 impl<'j, T, J> FromJavaValue<'j, J> for T
@@ -282,7 +279,7 @@ where
     J: 'j,
     J: From<JObject<'j>>,
 {
-    fn from_jvalue(env: JNIEnv<'j>, jvalue: JValue<'j>) -> Self {
+    fn from_jvalue(env: &mut JNIEnv<'j>, jvalue: JValueOwned<'j>) -> Self {
         let object = jvalue.l().expect("wrong type conversion");
         Self::java_to_rust(object.into(), env)
     }
@@ -291,7 +288,7 @@ where
 macro_rules! from_java_value {
     ($jtype: ident, $rtype:ty, $jval_func: ident) => {
         impl<'j> FromJavaValue<'j, $jtype> for $rtype {
-            fn from_jvalue(env: JNIEnv<'j>, jvalue: JValue<'j>) -> Self {
+            fn from_jvalue(env: &mut JNIEnv<'j>, jvalue: JValueOwned<'j>) -> Self {
                 let t = $jtype(jvalue.$jval_func().expect("wrong type conversion"));
                 Self::java_to_rust(t, env)
             }
@@ -300,7 +297,7 @@ macro_rules! from_java_value {
 }
 
 impl<'j> FromJavaValue<'j, JavaBoolean> for bool {
-    fn from_jvalue(_env: JNIEnv<'j>, jvalue: JValue<'j>) -> Self {
+    fn from_jvalue(_env: &mut JNIEnv<'j>, jvalue: JValueOwned<'j>) -> Self {
         jvalue.z().expect("wrong type conversion")
     }
 }
@@ -316,7 +313,7 @@ from_java_value!(JavaVoid, (), v);
 
 /// Convert from Rust type into JValue
 pub trait IntoJavaValue<'j, J: 'j> {
-    fn into_java_value(self, env: JNIEnv<'j>) -> JValue<'j>;
+    fn into_java_value(self, env: JNIEnv<'j>) -> JValueOwned<'j>;
 }
 
 impl<'j, J, R> IntoJavaValue<'j, J> for R
@@ -326,18 +323,19 @@ where
     J: FromRustToJava<'j, R>,
     J: Deref<Target = JObject<'j>>,
 {
-    fn into_java_value(self, env: JNIEnv<'j>) -> JValue<'j> {
+    fn into_java_value(self, env: JNIEnv<'j>) -> JValueOwned<'j> {
         let java = J::rust_to_java(self, env);
-        JValue::Object(*java)
+        //JValue::Object(*java)
+        JValueOwned::Object(unsafe {JObject::from_raw(java.as_raw())})
     }
 }
 
 macro_rules! into_java_value {
     ($jtype: ident, $rtype:ty) => {
         impl IntoJavaValue<'_, $jtype> for $rtype {
-            fn into_java_value(self, env: JNIEnv<'_>) -> JValue<'_> {
+            fn into_java_value(self, env: JNIEnv<'_>) -> JValueOwned<'_> {
                 let jval = $jtype::rust_to_java(self, env);
-                JValue::from(jval.0)
+                JValueOwned::from(jval.0)
             }
         }
     };
