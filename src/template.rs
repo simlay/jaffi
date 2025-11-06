@@ -497,7 +497,7 @@ fn generate_class_ffi(class_ffi: &ClassFfi) -> TokenStream {
                 #[doc = #fn_doc]
                 ///
                 /// This will be linked into the Java Object at runtime via the `ld_library_path` rules in Java.
-                #[no_mangle]
+                #[unsafe(no_mangle)]
                 #[allow(improper_ctypes_definitions)]
                 pub extern "system" fn #fn_export_ffi_name<'j>(
                     env: JNIEnv<'j>,
@@ -587,7 +587,7 @@ pub(crate) fn generate_java_ffi(
 
     let onload = quote!{
         /// Hook to setup panic_handler on the dynamic library load, etc.
-        #[no_mangle]
+        #[unsafe(no_mangle)]
         pub extern "system" fn JNI_OnLoad(vm: JavaVM, _reserved: *const std::ffi::c_void) -> jint {
             exceptions::register_panic_hook(vm);
             jni::sys::JNI_VERSION_1_8
