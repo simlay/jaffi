@@ -45,6 +45,7 @@ fn generate_function(func: &Function) -> TokenStream {
     let exception_name = exception_name_from_set(&func.exceptions);
     let return_err = quote!{ Exception::<'j, #exception_name> };
     let rs_result = &func.rs_result;
+
     let rs_result_sig = if !func.exceptions.is_empty() {
         quote!{ Result<#rs_result, #return_err> }
     } else {
@@ -151,18 +152,136 @@ fn generate_function(func: &Function) -> TokenStream {
     }
 }
 
-fn generate_struct(obj: &Object) -> TokenStream {
-    let class_name = &obj.class_name;
+fn generate_modules(mut objects: Vec<Object>) -> TokenStream {
+    objects.sort_by_key(|val| val.java_name.as_str().to_string());
+    let max_path_length = objects.iter().map(|obj| obj.java_name.class_path().len()).max().unwrap_or(0);
+
+    let mut last_path : Vec<String> = Vec::new();
+    let mut structs : Vec<TokenStream> = Vec::new();
+
+    // WHEN WE SHORTEN THE LAST PATH, we need to pop off the modules of the last_path
+    // WHEN WE REPLACE THE LAST PATH WITH A NEW PATH, we need to pop off the modules from the last
+    // WHEN WE END ALL THE PATHS we need to use the same indices from the paths
+    let mut nested_modules : Vec<Vec<TokenStream>> = vec![
+        Vec::new(); max_path_length
+    ];
+
+    for object in objects.into_iter() {
+        let new_path = object.java_name.class_path();
+
+        while new_path.len() < last_path.len() {
+            if let Some(module_to_end) = last_path.pop() {
+                let preceding_modules = nested_modules[last_path.len()].clone();
+                let msg = format!("Shortening path! new: {new_path:?}, last: {last_path:?}");
+                let inner_modules = if let Some(inner) = nested_modules.get(last_path.len() + 1) { inner} else { &Vec::new() };
+
+                let module_name = make_ident(&module_to_end);
+                let new_module = quote! {
+                    #[doc = #msg]
+                    #(#preceding_modules)*
+                    #[doc = #msg]
+                    pub mod #module_name {
+                        use crate::*;
+                        #(#inner_modules)*
+                        #(#structs)*
+                    }
+                };
+
+                nested_modules[last_path.len()] = vec![new_module];
+                for val in nested_modules[last_path.len()+1..max_path_length].iter_mut() {
+                    *val = Vec::new();
+                }
+
+                structs = Vec::new();
+            }
+        }
+
+        // First we go from the back to front to pop off any unshared module paths.
+        for (i, new_sub_path) in new_path.iter().enumerate().rev() {
+            if last_path.get(i).is_none() {
+                nested_modules[i].push(quote! {
+                    #(#structs)*
+                });
+                structs = Vec::new();
+                continue;
+            } else if last_path.get(i) != Some(new_sub_path) {
+                if let Some(module_to_end) = last_path.pop() {
+                    let preceding_modules = if let Some(inner) = nested_modules.get(i) { inner} else { &Vec::new() };
+                    let inner_modules = if let Some(inner) = nested_modules.get(i + 1) { inner} else { &Vec::new() };
+                    let msg = format!("Replacing for {module_to_end:?} in place of {:?}", new_path.get(i).unwrap());
+                    let module_name = make_ident(&module_to_end);
+                    let new_module = quote! {
+                        #[doc = #msg]
+                        #(#preceding_modules)*
+                        #[doc = #msg]
+                        pub mod #module_name {
+                            use crate::*;
+                            #(#inner_modules)*
+                            #(#structs)*
+                        }
+                    };
+                    for val in nested_modules[i + 1..max_path_length].iter_mut() {
+                        *val = Vec::new();
+                    }
+                    nested_modules[i] = vec![new_module];
+                    structs = Vec::new();
+                }
+            } else {
+            }
+        }
+        // Now we go front to back to push on any new module paths
+        for (i, new_sub_path) in new_path.iter().enumerate() {
+            if last_path.get(i) != Some(new_sub_path) {
+                last_path.push(new_sub_path.clone());
+            }
+        }
+        assert_eq!(new_path, last_path);
+
+        structs.push(generate_struct(&object, true));
+    }
+
+    let mut modules : Vec<TokenStream> = Vec::new();
+    for (i, module_to_end) in last_path.iter().enumerate().rev() {
+        let msg = format!("CLOSING MODULE AT THE END FOR {module_to_end}");
+        let module_name = make_ident(&module_to_end);
+        let preceding_modules = nested_modules[i].clone();
+        modules = vec![
+            quote! {
+                #[doc = #msg]
+                #(#preceding_modules)*
+                #[doc = #msg]
+                pub mod #module_name {
+                    //use super::*;
+                    use crate::*;
+                    #(#modules)*
+                    #(#structs)*
+                }
+                //pub use #module_name::*;
+            }
+        ];
+        structs = Vec::new();
+    }
+
+    quote! { #(#modules)*}
+}
+
+fn generate_struct(obj: &Object, use_module_path: bool) -> TokenStream {
+    let mut class_name = obj.class_name.clone();
     let static_java_doc = format!(
         "Wrapper for the static methods of Java class `{}`",
         obj.java_name
     );
-    let obj_name = &obj.obj_name;
+    let mut obj_name = obj.obj_name.clone();
     let java_doc = format!(
         "Wrapper for the public methods of Java class `{}`",
         obj.java_name
     );
-    let static_trait_name = &obj.static_trait_name;
+    let mut static_trait_name = obj.static_trait_name.clone();
+    if use_module_path {
+        static_trait_name.path = Vec::new();
+        class_name.path = Vec::new();
+        obj_name.path = Vec::new();
+    }
     let java_name = obj.java_name.as_str();
 
     let interfaces = obj
@@ -230,7 +349,7 @@ fn generate_struct(obj: &Object) -> TokenStream {
         #[doc = #java_doc]
         #[derive(Clone, Copy, Debug)]
         #[repr(transparent)]
-        pub struct #obj_name(JObject<'j>);
+        pub struct #obj_name(pub JObject<'j>);
 
         impl<'j> #static_trait_name for #obj_name {}
 
@@ -556,9 +675,10 @@ pub(crate) fn generate_java_ffi(
     objects: Vec<Object>,
     other_classes: Vec<ClassFfi>,
     exceptions: HashSet<BTreeSet<JavaDesc>>,
+    path_modules: bool,
 ) -> TokenStream {
     let header = quote! {
-        use jaffi_support::{
+        pub use jaffi_support::{
             exceptions,
             Exception,
             FromJavaToRust,
@@ -576,8 +696,12 @@ pub(crate) fn generate_java_ffi(
             }
         };
     };
+    let objects = if path_modules {
+        generate_modules(objects)
+    } else {
+        objects.iter().map(|obj| generate_struct(obj, false)).collect::<TokenStream>()
+    };
 
-    let objects = objects.iter().map(generate_struct).collect::<TokenStream>();
     let class_ffis = other_classes
         .iter()
         .map(generate_class_ffi)
@@ -646,13 +770,21 @@ pub(crate) struct Object {
     pub(crate) methods: Vec<Function>,
     pub(crate) interfaces: Vec<RustTypeName>,
 }
+impl std::fmt::Debug for Object {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("Object")
+            .field("class_name", &self.java_name.as_str())
+            .finish()
+    }
+}
 
 impl From<ObjectType> for Object {
     fn from(ty: ObjectType) -> Self {
         let java_name = ty.as_descriptor();
-        let class_name = ty.to_jni_class_name().append("<'j>");
-        let obj_name = ty.to_jni_type_name().append("<'j>");
-        let static_trait_name = ty.to_rs_type_name().prepend("Static");
+        // The caller of Object::From will have to rewrite these values.
+        let class_name = ty.to_jni_class_name(false).append("<'j>");
+        let obj_name = ty.to_jni_type_name(false).append("<'j>");
+        let static_trait_name = ty.to_rs_type_name(false).prepend("Static");
 
         Object {
             java_name,
@@ -679,17 +811,17 @@ impl Return {
         }
     }
 
-    pub(crate) fn to_jni_type_name(&self) -> RustTypeName {
+    pub(crate) fn to_jni_type_name(&self, path_modules: bool) -> RustTypeName {
         match self {
             Self::Void => std::any::type_name::<JavaVoid>().into(),
-            Self::Val(ty) => ty.to_jni_type_name(),
+            Self::Val(ty) => ty.to_jni_type_name(path_modules),
         }
     }
 
-    pub(crate) fn to_rs_type_name(&self) -> RustTypeName {
+    pub(crate) fn to_rs_type_name(&self, path_modules: bool) -> RustTypeName {
         match self {
             Self::Void => "()".into(),
-            Self::Val(ty) => ty.to_rs_type_name(),
+            Self::Val(ty) => ty.to_rs_type_name(path_modules),
         }
     }
 }
@@ -728,7 +860,7 @@ impl JniType {
     /// Outputs the form needed in jni function interfaces
     ///
     /// These must all be marked `#[repr(transparent)]` in order to be used at the FFI boundary
-    pub(crate) fn to_jni_type_name(&self) -> RustTypeName {
+    pub(crate) fn to_jni_type_name(&self, path_modules: bool) -> RustTypeName {
         match self {
             Self::Ty(BaseJniTy::Jbyte) => std::any::type_name::<JavaByte>().into(),
             Self::Ty(BaseJniTy::Jchar) => std::any::type_name::<JavaChar>().into(),
@@ -738,13 +870,13 @@ impl JniType {
             Self::Ty(BaseJniTy::Jlong) => std::any::type_name::<JavaLong>().into(),
             Self::Ty(BaseJniTy::Jshort) => std::any::type_name::<JavaShort>().into(),
             Self::Ty(BaseJniTy::Jboolean) => std::any::type_name::<JavaBoolean>().into(),
-            Self::Ty(BaseJniTy::Jobject(obj)) => obj.to_type_name_base(),
+            Self::Ty(BaseJniTy::Jobject(obj)) => obj.to_type_name_base(path_modules),
             // in JNI the array is always jarray
             Self::Jarray(jarray) => jarray.to_jni_type_name(),
         }
     }
 
-    pub(crate) fn to_rs_type_name(&self) -> RustTypeName {
+    pub(crate) fn to_rs_type_name(&self, path_modules: bool) -> RustTypeName {
         match self {
             Self::Ty(BaseJniTy::Jbyte) => std::any::type_name::<i8>().into(),
             Self::Ty(BaseJniTy::Jchar) => std::any::type_name::<char>().into(),
@@ -754,7 +886,7 @@ impl JniType {
             Self::Ty(BaseJniTy::Jlong) => std::any::type_name::<i64>().into(),
             Self::Ty(BaseJniTy::Jshort) => std::any::type_name::<i16>().into(),
             Self::Ty(BaseJniTy::Jboolean) => std::any::type_name::<bool>().into(),
-            Self::Ty(BaseJniTy::Jobject(obj)) => obj.to_rs_type_name(),
+            Self::Ty(BaseJniTy::Jobject(obj)) => obj.to_rs_type_name(path_modules),
             // in JNI the array is always jarray
             Self::Jarray(jarray) => jarray.to_rs_type_name(),
         }
@@ -835,7 +967,7 @@ impl ObjectType {
         }
     }
 
-    fn to_type_name_base(&self) -> RustTypeName {
+    fn to_type_name_base(&self, path_modules: bool) -> RustTypeName {
         match *self {
             Self::JClass => "jni::objects::JClass<'j>".into(),
             Self::JByteBuffer => "jni::objects::JByteBuffer<'j>".into(),
@@ -843,24 +975,29 @@ impl ObjectType {
             Self::JString => "jni::objects::JString<'j>".into(),
             Self::JThrowable => "jni::objects::JThrowable<'j>".into(),
             Self::Object(ref obj) => {
-                RustTypeName::from(obj.escape_for_extern_fn().to_upper_camel_case()).append("<'j>")
+                let rt_name = if path_modules {
+                    obj.with_rust_path()
+                } else {
+                    obj.escape_for_extern_fn().to_upper_camel_case()
+                };
+                RustTypeName::from(rt_name).append("<'j>")
             }
         }
     }
 
     /// Returns the typename with a lifetime
-    pub(crate) fn to_jni_type_name(&self) -> RustTypeName {
-        self.to_type_name_base()
+    pub(crate) fn to_jni_type_name(&self, path_modules: bool) -> RustTypeName {
+        self.to_type_name_base(path_modules)
     }
 
     /// Returns the typename plus "Class" with a lifetime
-    pub(crate) fn to_jni_class_name(&self) -> RustTypeName {
+    pub(crate) fn to_jni_class_name(&self, path_modules: bool) -> RustTypeName {
         // add the lifetime
-        self.to_type_name_base().append("Class<'j>")
+        self.to_type_name_base(path_modules).append("Class<'j>")
     }
 
     /// Returns the typename without a lifetime
-    pub(crate) fn to_rs_type_name(&self) -> RustTypeName {
+    pub(crate) fn to_rs_type_name(&self, path_modules: bool) -> RustTypeName {
         match *self {
             Self::JClass      => "jni::objects::JClass<'j>".into(),
             Self::JByteBuffer => "jni::objects::JByteBuffer<'j>".into(),
@@ -868,7 +1005,12 @@ impl ObjectType {
             Self::JString     => "String".into(),
             Self::JThrowable  => "jni::objects::JThrowable<'j>".into(),
             Self::Object(ref obj) => {
-                RustTypeName::from(obj.0.replace('/', "_").to_upper_camel_case()).append("<'j>")
+                let name = if path_modules {
+                    obj.with_rust_path()
+                } else {
+                    obj.with_squished_name()
+                };
+                RustTypeName::from(name).append("<'j>")
             }
         }
     }
@@ -1072,6 +1214,31 @@ impl JavaDesc {
             .last()
             .expect("split should at least return empty string")
     }
+
+    pub(crate) fn with_rust_path(&self) -> String {
+        self.as_str().replace("/", "::").replace("$", "")
+    }
+
+    pub(crate) fn with_squished_name(&self) -> String {
+        self.as_str().to_upper_camel_case()
+    }
+
+    pub(crate) fn class_path(&self) -> Vec<String> {
+        let mut out = self.0
+            .split(['/', '$'])
+            .map(|val|val.to_string())
+            .collect::<Vec<String>>();
+
+        // The last element should be a classname.
+        out.pop();
+
+        // When there's a dollar sign, it's after the class name.
+        if self.0.contains('$') {
+            out.pop();
+        }
+
+        out
+    }
 }
 
 impl From<String> for JavaDesc {
@@ -1106,13 +1273,13 @@ fn path_from_name(name: &str) -> (Vec<Ident>, &str) {
         .next()
         .expect("even empty strings should return the empty string");
     let path = iter.map(make_ident).collect();
-
     (path, name)
 }
 
 impl RustTypeName {
     pub(crate) fn append(&self, s: &str) -> Self {
         let (path, s) = path_from_name(s);
+        let path = if path.is_empty() { self.path.clone() } else { path };
         let (s, lifetime) = if s.ends_with("<'j>") {
             (s.trim_end_matches("<'j>"), true)
         } else {
@@ -1136,6 +1303,7 @@ impl RustTypeName {
 
     pub(crate) fn prepend(&self, s: &str) -> Self {
         let (path, s) = path_from_name(s);
+        let path = if path.is_empty() { self.path.clone() } else { path };
         let (s, lifetime) = if s.ends_with("<'j>") {
             (s.trim_end_matches("<'j>"), true)
         } else {
@@ -1223,7 +1391,9 @@ impl ToTokens for RustTypeName {
             } else {
                 quote! {}
             };
-
+            if !self.path.contains(&make_ident("jaffi_support")) && !self.path.is_empty() {
+                tokens.extend(quote! { crate:: });
+            }
             for i in self.path.iter().rev() {
                 tokens.extend(quote! { #i:: });
             }
