@@ -105,7 +105,7 @@ impl<'a> Jaffi<'a> {
         let output_dir = self.output_dir;
 
         // we always generate to the same file name
-        let rust_file = output_dir.join(&self.output_filename);
+        let rust_file = output_dir.join(self.output_filename);
 
         // collect all the exception types
         let exceptions = objects
@@ -159,7 +159,7 @@ impl<'a> Jaffi<'a> {
 
             #[allow(clippy::unimplemented)]
             'search: for classpath in classpath {
-                if classpath.is_dir() && lookup_from_path(&*classpath, &class) {
+                if classpath.is_dir() && lookup_from_path(classpath, &class) {
                     found_class = true;
                     found_classes.push(classpath.join(&class));
                     break 'search;
@@ -277,7 +277,7 @@ impl<'a> Jaffi<'a> {
             }
 
             if wrap_methods {
-                let class = self.search_classpath(&[object_desc.clone()])?;
+                let class = self.search_classpath(std::slice::from_ref(&object_desc))?;
 
                 for obj_path in class {
                     let class_file = self.read_class(&obj_path, &mut class_buf)?;

@@ -107,7 +107,7 @@ impl<'j> Deref for JavaByteArray<'j> {
 
 pub struct JavaByteArrayRef<'s>(AutoArray<'s, jni::sys::jbyte>);
 
-impl<'s: 'j, 'j> Deref for JavaByteArrayRef<'s> {
+impl<'s> Deref for JavaByteArrayRef<'s> {
     type Target = [u8];
 
     fn deref(&self) -> &Self::Target {

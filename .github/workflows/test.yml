@@ -5,6 +5,7 @@ on:
   push:
     branches:
       - main
+      - android-bindings
       - release/**
   pull_request:
     branches:

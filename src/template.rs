@@ -172,14 +172,12 @@ fn generate_modules(mut objects: Vec<Object>) -> TokenStream {
         while new_path.len() < last_path.len() {
             if let Some(module_to_end) = last_path.pop() {
                 let preceding_modules = nested_modules[last_path.len()].clone();
-                let msg = format!("Shortening path! new: {new_path:?}, last: {last_path:?}");
+
                 let inner_modules = if let Some(inner) = nested_modules.get(last_path.len() + 1) { inner} else { &Vec::new() };
 
                 let module_name = make_ident(&module_to_end);
                 let new_module = quote! {
-                    #[doc = #msg]
                     #(#preceding_modules)*
-                    #[doc = #msg]
                     pub mod #module_name {
                         use crate::*;
                         #(#inner_modules)*
@@ -204,16 +202,12 @@ fn generate_modules(mut objects: Vec<Object>) -> TokenStream {
                 });
                 structs = Vec::new();
                 continue;
-            } else if last_path.get(i) != Some(new_sub_path) {
-                if let Some(module_to_end) = last_path.pop() {
+            } else if last_path.get(i) != Some(new_sub_path) && let Some(module_to_end) = last_path.pop() {
                     let preceding_modules = if let Some(inner) = nested_modules.get(i) { inner} else { &Vec::new() };
                     let inner_modules = if let Some(inner) = nested_modules.get(i + 1) { inner} else { &Vec::new() };
-                    let msg = format!("Replacing for {module_to_end:?} in place of {:?}", new_path.get(i).unwrap());
                     let module_name = make_ident(&module_to_end);
                     let new_module = quote! {
-                        #[doc = #msg]
                         #(#preceding_modules)*
-                        #[doc = #msg]
                         pub mod #module_name {
                             use crate::*;
                             #(#inner_modules)*
@@ -225,8 +219,6 @@ fn generate_modules(mut objects: Vec<Object>) -> TokenStream {
                     }
                     nested_modules[i] = vec![new_module];
                     structs = Vec::new();
-                }
-            } else {
             }
         }
         // Now we go front to back to push on any new module paths
@@ -242,21 +234,16 @@ fn generate_modules(mut objects: Vec<Object>) -> TokenStream {
 
     let mut modules : Vec<TokenStream> = Vec::new();
     for (i, module_to_end) in last_path.iter().enumerate().rev() {
-        let msg = format!("CLOSING MODULE AT THE END FOR {module_to_end}");
-        let module_name = make_ident(&module_to_end);
+        let module_name = make_ident(module_to_end);
         let preceding_modules = nested_modules[i].clone();
         modules = vec![
             quote! {
-                #[doc = #msg]
                 #(#preceding_modules)*
-                #[doc = #msg]
                 pub mod #module_name {
-                    //use super::*;
                     use crate::*;
                     #(#modules)*
                     #(#structs)*
                 }
-                //pub use #module_name::*;
             }
         ];
         structs = Vec::new();
@@ -1026,11 +1013,11 @@ impl<'o> From<&'o JavaDesc> for ObjectType {
     fn from(java_desc: &'o JavaDesc) -> Self {
         let path_name = java_desc.as_str();
         match path_name {
-            _ if &*path_name == "java/lang/Class" => Self::JClass,
-            _ if &*path_name == "java/nio/ByteBuffer" => Self::JByteBuffer,
-            _ if &*path_name == "java/lang/Object" => Self::JObject,
-            _ if &*path_name == "java/lang/String" => Self::JString,
-            _ if &*path_name == "java/lang/Throwable" => Self::JThrowable,
+            _ if path_name == "java/lang/Class" => Self::JClass,
+            _ if path_name == "java/nio/ByteBuffer" => Self::JByteBuffer,
+            _ if path_name == "java/lang/Object" => Self::JObject,
+            _ if path_name == "java/lang/String" => Self::JString,
+            _ if path_name == "java/lang/Throwable" => Self::JThrowable,
             path_name => Self::Object(path_name.to_string().into()),
         }
     }
@@ -1211,8 +1198,7 @@ impl JavaDesc {
     pub(crate) fn class_name(&self) -> &str {
         self.0
             .split(['/', '$'])
-            .last()
-            .expect("split should at least return empty string")
+            .next_back().unwrap_or("")
     }
 
     pub(crate) fn with_rust_path(&self) -> String {

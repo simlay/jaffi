@@ -9,7 +9,7 @@ use std::{
     any::Any,
     borrow::Cow,
     fmt,
-    panic::{self, PanicInfo, UnwindSafe},
+    panic::{self, PanicHookInfo, UnwindSafe},
 };
 
 use jni::{
@@ -39,7 +39,7 @@ pub fn get_panic_message(message: &dyn Any) -> Cow<'_, str> {
 
 /// This panic hook can add a bit more information than the catch_unwind, which doesn't get the full panic_info
 pub fn register_panic_hook(vm: JavaVM) {
-    panic::set_hook(Box::new(move |panic_info: &PanicInfo| {
+    panic::set_hook(Box::new(move |panic_info: &PanicHookInfo| {
         let env = vm.get_env().expect("not called in a JVM context");
 
         // we don't want to overwrite an existing exception...
