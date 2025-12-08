@@ -1,6 +1,7 @@
 name: test
 
 on:
+  workflow_dispatch:
   push:
     branches:
       - main
@@ -32,12 +33,12 @@ jobs:
         profile: minimal
         toolchain: stable
         override: true
-    
+
     - uses: actions/setup-java@v3
       with:
         distribution: 'temurin' # See 'Supported distributions' for available options
         java-version: '17'
-    
+
     - uses: extractions/setup-just@v1
 
     - name: install fd
