@@ -12,7 +12,8 @@ mod net_bluejekyll {
         clippy::unused_unit,
         clippy::needless_lifetimes,
         clippy::let_unit_value,
-        clippy::let_and_return
+        clippy::let_and_return,
+        mismatched_lifetime_syntaxes
     )]
 
     include!(concat!(env!("OUT_DIR"), "/generated_jaffi.rs"));
@@ -84,7 +85,7 @@ impl<'j> net_bluejekyll::NativePrimitivesRs<'j> for NativePrimitivesRsImpl<'j> {
     }
 
     fn invert(&self, _this:NetBluejekyllNativePrimitives<'j>, arg0: bool) -> bool {
-        return !arg0
+        !arg0
     }
 
     fn unsupported(
