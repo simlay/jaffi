@@ -36,11 +36,11 @@ license = "MIT/Apache-2.0"
 members = ["jaffi_support", "integration_tests"]
 
 [dependencies]
-cafebabe = { version = "0.8.1" }
-enum-as-inner = "0.5"
-heck = "0.4.0"
+cafebabe = "0.9.0"
+enum-as-inner = "0.6.1"
+heck = "0.5.0"
 jaffi_support = { version = "0.2.0", path = "./jaffi_support" }
-proc-macro2 = "1.0.40"
-quote = "1.0.20"
+proc-macro2 = "1.0.103"
+quote = "1.0.42"
 thiserror = "1.0.20"
-typed-builder = "0.10.0"
+typed-builder = "0.23.2"
