@@ -1,7 +1,7 @@
 [package]
 name = "jaffi"
 version = "0.2.0"
-edition = "2021"
+edition = "2024"
 authors = ["Benjamin Fry <benjaminfry@me.com>"]
 
 # A short blurb about the package. This is not rendered in any format when
@@ -36,11 +36,11 @@ license = "MIT/Apache-2.0"
 members = ["jaffi_support", "integration_tests"]
 
 [dependencies]
-cafebabe = { version = "0.6.0" }
+cafebabe = "0.9.0"
+typed-builder = "0.23.2"
 enum-as-inner = "0.6.1"
 heck = "0.5.0"
 jaffi_support = { version = "0.2.0", path = "./jaffi_support" }
-proc-macro2 = "1.0.94"
-quote = "1.0.40"
+proc-macro2 = "1.0.103"
+quote = "1.0.42"
 thiserror = "2.0.12"
-typed-builder = "0.21.0"

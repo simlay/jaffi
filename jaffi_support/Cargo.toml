@@ -1,7 +1,7 @@
 [package]
 name = "jaffi_support"
 version = "0.2.0"
-edition = "2021"
+edition = "2024"
 authors = ["Benjamin Fry <benjaminfry@me.com>"]
 
 # A short blurb about the package. This is not rendered in any format when

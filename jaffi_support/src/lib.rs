@@ -14,7 +14,7 @@ pub use exceptions::{Error, Exception, Throwable};
 pub use jni;
 
 use jni::{
-    objects::{JClass, JObject, JString, JValue, JByteArray, JValueOwned},
+    objects::{JClass, JObject, JString, JValue, JThrowable, JByteArray, JValueOwned},
     strings::{JNIString, JavaStr},
     JNIEnv,
 };
@@ -50,6 +50,16 @@ impl<'j, T> JavaPrimitive for T where T: Deref<Target = JObject<'j>> + Default {
 
 pub trait FromJavaToRust<'j, J: 'j> {
     fn java_to_rust(java: J, _env: &mut JNIEnv<'j>) -> Self;
+}
+impl<'j> FromJavaToRust<'j, JObject<'j>> for JObject<'j> {
+    fn java_to_rust(java: JObject<'j>, _env: JNIEnv<'j>) -> Self {
+        java
+    }
+}
+impl<'j> FromJavaToRust<'j, JThrowable<'j>> for JThrowable<'j> {
+    fn java_to_rust(java: JThrowable<'j>, _env: JNIEnv<'j>) -> Self {
+        java
+    }
 }
 
 pub trait FromRustToJava<'j, R> {
@@ -327,6 +337,17 @@ where
         let java = J::rust_to_java(self, env);
         //JValue::Object(*java)
         JValueOwned::Object(unsafe {JObject::from_raw(java.as_raw())})
+    }
+}
+impl<'j> IntoJavaValue<'j, JObject<'j>> for JObject<'j> {
+    fn into_java_value(self, _env: JNIEnv<'j>) -> JValue<'j> {
+        JValue::Object(self)
+    }
+}
+
+impl<'j> IntoJavaValue<'j, JThrowable<'j>> for JThrowable<'j> {
+    fn into_java_value(self, _env: JNIEnv<'j>) -> JValue<'j> {
+        JValue::Object(*self)
     }
 }
 

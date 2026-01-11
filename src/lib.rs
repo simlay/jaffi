@@ -57,6 +57,9 @@ pub struct Jaffi<'a> {
     /// Name of the target jaffi file, defaults to "generated_jaffi.rs"
     #[builder(default=Path::new("generated_jaffi.rs"))]
     output_filename: &'a Path,
+    /// Create sub modules
+    #[builder(default=false)]
+    path_modules: bool,
     /// Used like ClassPath in Java, defaults to `.` if empty
     classpath: Vec<Cow<'a, Path>>,
     /// List of classes with native methods (specified as java class names, i.e. `java.lang.Object`) to generate bindings for
@@ -102,7 +105,7 @@ impl<'a> Jaffi<'a> {
         let output_dir = self.output_dir;
 
         // we always generate to the same file name
-        let rust_file = output_dir.join(&self.output_filename);
+        let rust_file = output_dir.join(self.output_filename);
 
         // collect all the exception types
         let exceptions = objects
@@ -130,7 +133,7 @@ impl<'a> Jaffi<'a> {
             .cloned()
             .collect();
 
-        let ffi_tokens = template::generate_java_ffi(objects, class_ffis, exceptions);
+        let ffi_tokens = template::generate_java_ffi(objects, class_ffis, exceptions, self.path_modules);
         let rendered = ffi_tokens.to_string();
 
         let mut rust_file = File::create(rust_file)?;
@@ -156,7 +159,7 @@ impl<'a> Jaffi<'a> {
 
             #[allow(clippy::unimplemented)]
             'search: for classpath in classpath {
-                if classpath.is_dir() && lookup_from_path(&*classpath, &class) {
+                if classpath.is_dir() && lookup_from_path(classpath, &class) {
                     found_class = true;
                     found_classes.push(classpath.join(&class));
                     break 'search;
@@ -245,8 +248,11 @@ impl<'a> Jaffi<'a> {
         let mut search_object_types = types.iter().cloned().collect::<Vec<_>>();
         let mut objects = Vec::<Object>::with_capacity(search_object_types.len());
         let mut already_generated = HashSet::<JavaDesc>::new();
-        let classes_to_wrap = self
-            .classes_to_wrap
+
+        // TODO: Sorting here is probably not necesary.
+        let mut classes_to_wrap = self.classes_to_wrap.clone();
+        classes_to_wrap.sort();
+        let classes_to_wrap = classes_to_wrap
             .iter()
             .chain(self.native_classes.iter())
             .map(|s| JavaDesc::from(&**s))
@@ -262,9 +268,16 @@ impl<'a> Jaffi<'a> {
 
             let wrap_methods = classes_to_wrap.contains(&object_desc);
             let mut object = Object::from(ObjectType::from(&object_desc));
+            // This is pretty hacky.
+            if self.path_modules {
+                let ty = ObjectType::from(&object_desc);
+                object.class_name = ty.to_jni_class_name(true).append("<'j>");
+                object.obj_name = ty.to_jni_type_name(true).append("<'j>");
+                object.static_trait_name = ty.to_rs_type_name(true).prepend("Static");
+            }
 
             if wrap_methods {
-                let class = self.search_classpath(&[object_desc.clone()])?;
+                let class = self.search_classpath(std::slice::from_ref(&object_desc))?;
 
                 for obj_path in class {
                     let class_file = self.read_class(&obj_path, &mut class_buf)?;
@@ -301,10 +314,15 @@ impl<'a> Jaffi<'a> {
                         //   we won't add to the types hashmap
                         let interface = JavaDesc::from(interface as &str);
                         if types.contains(&interface) {
+                            let name = if self.path_modules {
+                                interface.with_rust_path()
+                            } else {
+                                interface.as_str().to_upper_camel_case()
+                            };
                             search_object_types.push(interface.clone());
                             object
                                 .interfaces
-                                .push(RustTypeName::from(interface.as_str().to_upper_camel_case()));
+                                .push(RustTypeName::from(name));
                         }
                     }
 
@@ -363,8 +381,8 @@ impl<'a> Jaffi<'a> {
             let is_static = method.access_flags.contains(MethodAccessFlags::STATIC);
 
             let object_java_desc = this_class_desc.clone();
-            let class_ffi_name = this_class.to_jni_class_name();
-            let object_ffi_name = this_class.to_jni_type_name();
+            let class_ffi_name = this_class.to_jni_class_name(self.path_modules);
+            let object_ffi_name = this_class.to_jni_type_name(self.path_modules);
 
             let arg_types = method
                 .descriptor
@@ -374,7 +392,7 @@ impl<'a> Jaffi<'a> {
                 .collect::<Vec<_>>();
 
             let result = if !is_constructor {
-                Return::from_java(&method.descriptor.result)
+                Return::from_java(&method.descriptor.return_type)
             } else {
                 Return::Val(JniType::Ty(BaseJniTy::Jobject(ObjectType::from(
                     object_java_desc.clone(),
@@ -396,8 +414,8 @@ impl<'a> Jaffi<'a> {
                 .enumerate()
                 .map(move |(i, ty)| Arg {
                     name: format_ident!("arg{i}"),
-                    ty: ty.to_jni_type_name(),
-                    rs_ty: ty.to_rs_type_name(),
+                    ty: ty.to_jni_type_name(self.path_modules),
+                    rs_ty: ty.to_rs_type_name(self.path_modules),
                 })
                 .collect();
 
@@ -469,8 +487,8 @@ impl<'a> Jaffi<'a> {
                 is_static,
                 is_native,
                 arguments,
-                result: result.to_jni_type_name(),
-                rs_result: result.to_rs_type_name(),
+                result: result.to_jni_type_name(self.path_modules),
+                rs_result: result.to_rs_type_name(self.path_modules),
                 exceptions,
             };
 

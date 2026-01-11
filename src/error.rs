@@ -86,9 +86,3 @@ impl From<Error> for String {
         e.to_string()
     }
 }
-
-/// A trait marking a type which implements From<Error> and
-/// std::error::Error types as well as Clone + Send
-pub(crate) trait FromError: From<Error> + std::error::Error + Clone {}
-
-impl<E> FromError for E where E: From<Error> + std::error::Error + Clone {}
